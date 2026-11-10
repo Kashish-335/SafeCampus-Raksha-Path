@@ -1,0 +1,303 @@
+import React, { useState, useEffect } from 'react';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { DemoProvider, useDemo } from './context/DemoContext';
+import { ToastProvider, useToast } from './context/ToastContext';
+import { MobileHeader } from './components/layout/MobileHeader';
+import { BottomNav, TabType } from './components/layout/BottomNav';
+import { DemoModeBanner } from './components/layout/DemoModeBanner';
+import { SafetyMap } from './components/map/SafetyMap';
+import { CampusSearchModal } from './components/map/CampusSearchModal';
+import { ReportForm } from './components/report/ReportForm';
+import { ReportTracker } from './components/report/ReportTracker';
+import { SOSButton } from './components/sos/SOSButton';
+import { SOSModal } from './components/sos/SOSModal';
+import { CalculatorDisguise } from './components/sos/CalculatorDisguise';
+import { RouteSelector } from './components/walk/RouteSelector';
+import { WalkTracker } from './components/walk/WalkTracker';
+import { BuddyList } from './components/buddies/BuddyList';
+import { AdminDashboard } from './components/admin/AdminDashboard';
+import { PrivacyConsentModal } from './components/auth/PrivacyConsentModal';
+import { dataService } from './services/dataService';
+import { Report, SafetyCheckpoint, SafetyBuddy, RouteOption } from './types';
+import { AlertDispatchResult } from './services/alertService';
+import { CampusLocation, PRESET_CAMPUSES } from './services/campusMapService';
+import { Shield, MapPin, Eye, Sparkles } from 'lucide-react';
+
+const MainAppContent: React.FC = () => {
+  const { user, isAdmin } = useAuth();
+  const { showToast } = useToast();
+
+  const [currentTab, setCurrentTab] = useState<TabType>('map');
+  const [reports, setReports] = useState<Report[]>([]);
+  const [checkpoints, setCheckpoints] = useState<SafetyCheckpoint[]>([]);
+  const [buddies, setBuddies] = useState<SafetyBuddy[]>([]);
+  const [selectedReport, setSelectedReport] = useState<Report | null>(null);
+  const [pinnedLocation, setPinnedLocation] = useState<{ lat: number; lng: number } | null>(null);
+
+  // Campus Selection & 3D Fly-In
+  const [selectedCampus, setSelectedCampus] = useState<CampusLocation>(PRESET_CAMPUSES[0]);
+  const [isCampusSearchOpen, setIsCampusSearchOpen] = useState<boolean>(false);
+
+  // Safe Route & Walk state
+  const [activeRoute, setActiveRoute] = useState<RouteOption | null>(null);
+  const [walkSession, setWalkSession] = useState<{ route: RouteOption; destinationName: string } | null>(null);
+  const [liveSosLocation, setLiveSosLocation] = useState<{ lat: number; lng: number } | null>(null);
+
+  // Modals state
+  const [isDisguiseOpen, setIsDisguiseOpen] = useState(false);
+  const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
+  const [activeSOSResult, setActiveSOSResult] = useState<AlertDispatchResult | null>(null);
+
+  // Load initial data
+  useEffect(() => {
+    async function loadData() {
+      const [reps, cps, buds] = await Promise.all([
+        dataService.getReports(),
+        dataService.getCheckpoints(),
+        dataService.getSafetyBuddies(),
+      ]);
+      setReports(reps);
+      setCheckpoints(cps);
+      setBuddies(buds);
+    }
+    loadData();
+
+    // Online listener
+    const handleOnline = () => {
+      showToast('Back online! Syncing offline queue...', 'success');
+    };
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, []);
+
+  // When admin role is toggled, jump to admin tab
+  useEffect(() => {
+    if (isAdmin && currentTab === 'profile') {
+      setCurrentTab('admin');
+    }
+  }, [isAdmin]);
+
+  const handleReportSubmitted = (newReport: Report) => {
+    setReports((prev) => [newReport, ...prev]);
+    setSelectedReport(newReport);
+    setPinnedLocation(null);
+  };
+
+  const handleReportUpdated = (updated: Report) => {
+    setReports((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+    if (selectedReport?.id === updated.id) {
+      setSelectedReport(updated);
+    }
+  };
+
+  const handleMapClick = (lat: number, lng: number) => {
+    setPinnedLocation({ lat, lng });
+    showToast(`Pinned location (${lat.toFixed(4)}, ${lng.toFixed(4)}) for report.`, 'info');
+  };
+
+  return (
+    <div className="min-h-screen bg-safecampus-dark flex flex-col font-sans pb-20 select-none">
+      {/* Mobile Top App Header */}
+      <MobileHeader
+        currentTab={currentTab}
+        currentCampus={selectedCampus}
+        onOpenDisguise={() => setIsDisguiseOpen(true)}
+        onOpenPrivacy={() => setIsPrivacyOpen(true)}
+        onOpenCampusSearch={() => setIsCampusSearchOpen(true)}
+      />
+
+      {/* Demo Mode & Hackathon Banner */}
+      <DemoModeBanner />
+
+      {/* Main Content Area */}
+      <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-5">
+        {/* TAB 1: 3D SAFETY MAP VIEW */}
+        {currentTab === 'map' && (
+          <div className="space-y-4">
+            <div className="h-[480px] sm:h-[540px] w-full">
+              <SafetyMap
+                reports={reports}
+                checkpoints={checkpoints}
+                buddies={buddies}
+                selectedReport={selectedReport}
+                onSelectReport={(r) => setSelectedReport(r)}
+                onMapClick={handleMapClick}
+                pinnedLocation={pinnedLocation}
+                activeRoute={activeRoute}
+                selectedCampus={selectedCampus}
+                liveSosLocation={liveSosLocation}
+              />
+            </div>
+
+            {/* Selected Report Detail Card if clicked */}
+            {selectedReport && (
+              <div className="p-4 rounded-2xl bg-safecampus-card border border-safecampus-border shadow-xl animate-fadeIn">
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-brand-300 bg-brand-950 px-2 py-0.5 rounded border border-brand-800">
+                      {selectedReport.category.replace('_', ' ')}
+                    </span>
+                    <h3 className="text-sm font-bold text-white mt-1">
+                      {selectedReport.title}
+                    </h3>
+                  </div>
+                  <button
+                    onClick={() => setSelectedReport(null)}
+                    className="text-xs text-slate-500 hover:text-white"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <p className="text-xs text-slate-300 mb-2">
+                  📍 {selectedReport.location_name} — {selectedReport.description}
+                </p>
+                {selectedReport.ai_summary && (
+                  <div className="text-[11px] text-purple-200 bg-purple-950/70 p-2 rounded-lg border border-purple-800/40 mb-2 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-brand-400 shrink-0" />
+                    <span>{selectedReport.ai_summary}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between text-[11px] text-slate-400">
+                  <span>Urgency: <strong className="text-rose-400">{selectedReport.urgency}/5</strong></span>
+                  <span>Status: <strong className="text-emerald-400 uppercase">{selectedReport.status}</strong></span>
+                  {selectedReport.assigned_to && <span>Assigned to: {selectedReport.assigned_to}</span>}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 2: ANONYMOUS REPORT & ISSUE TRACKER */}
+        {currentTab === 'report' && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ReportForm
+              existingReports={reports}
+              onReportSubmitted={handleReportSubmitted}
+              initialLocation={pinnedLocation || undefined}
+            />
+            <ReportTracker
+              reports={reports}
+              onSelectReport={(r) => {
+                setSelectedReport(r);
+                setCurrentTab('map');
+              }}
+            />
+          </div>
+        )}
+
+        {/* TAB 3: SILENT EMERGENCY SOS */}
+        {currentTab === 'sos' && (
+          <div className="max-w-md mx-auto space-y-4">
+            <SOSButton
+              onSOSDispatched={(result) => {
+                setActiveSOSResult(result);
+                setLiveSosLocation({ lat: 28.5480, lng: 77.1905 });
+              }}
+            />
+          </div>
+        )}
+
+        {/* TAB 4: WALK WITH ME & SAFE ROUTE NAVIGATOR */}
+        {currentTab === 'walk' && (
+          <div className="max-w-xl mx-auto space-y-4">
+            {walkSession ? (
+              <WalkTracker
+                route={walkSession.route}
+                destinationName={walkSession.destinationName}
+                onEndTrip={() => {
+                  setWalkSession(null);
+                  setActiveRoute(null);
+                }}
+                onTriggerSOS={(res) => {
+                  setActiveSOSResult(res);
+                  setLiveSosLocation({ lat: 28.5441, lng: 77.1897 });
+                }}
+              />
+            ) : (
+              <RouteSelector
+                reports={reports}
+                onRouteSelected={(route) => {
+                  setActiveRoute(route);
+                }}
+                onPreviewRoute={(route) => {
+                  setActiveRoute(route);
+                  setCurrentTab('map');
+                  showToast(`Camera previewing ${route.name} in 3D...`, 'info');
+                }}
+                onStartWalk={(route, destName) => {
+                  setActiveRoute(route);
+                  setWalkSession({ route, destinationName: destName });
+                }}
+              />
+            )}
+          </div>
+        )}
+
+        {/* TAB 5: PEER SAFETY BUDDIES & PROFILE */}
+        {currentTab === 'profile' && (
+          <div className="max-w-md mx-auto">
+            <BuddyList buddies={buddies} />
+          </div>
+        )}
+
+        {/* TAB 6: ADMIN DASHBOARD */}
+        {currentTab === 'admin' && (
+          <div className="space-y-4">
+            <AdminDashboard reports={reports} onReportUpdated={handleReportUpdated} />
+          </div>
+        )}
+      </main>
+
+      {/* Floating Bottom Navigation */}
+      <BottomNav currentTab={currentTab} onTabChange={(t) => setCurrentTab(t)} />
+
+      {/* Auto Campus Map Search & Fly-In Modal */}
+      <CampusSearchModal
+        isOpen={isCampusSearchOpen}
+        onClose={() => setIsCampusSearchOpen(false)}
+        selectedCampusId={selectedCampus.id}
+        onSelectCampus={(c) => {
+          setSelectedCampus(c);
+          showToast(`Flying into ${c.shortName} in 3D...`, 'info');
+        }}
+      />
+
+      {/* Fake Calculator Disguise Screen */}
+      <CalculatorDisguise
+        isOpen={isDisguiseOpen}
+        onClose={() => setIsDisguiseOpen(false)}
+        onSilentTriggerSOS={() => {
+          showToast('Silent SOS triggered from Calculator Keypad (911=)', 'sos');
+        }}
+      />
+
+      {/* SOS Dispatched Details Modal */}
+      <SOSModal
+        dispatchResult={activeSOSResult}
+        onClose={() => setActiveSOSResult(null)}
+        onOpenDisguise={() => {
+          setActiveSOSResult(null);
+          setIsDisguiseOpen(true);
+        }}
+      />
+
+      {/* Privacy and Consent Modal */}
+      <PrivacyConsentModal
+        isOpen={isPrivacyOpen}
+        onClose={() => setIsPrivacyOpen(false)}
+      />
+    </div>
+  );
+};
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <DemoProvider>
+        <ToastProvider>
+          <MainAppContent />
+        </ToastProvider>
+      </DemoProvider>
+    </AuthProvider>
+  );
+}

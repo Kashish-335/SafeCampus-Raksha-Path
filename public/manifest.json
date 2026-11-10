@@ -1,0 +1,19 @@
+{
+  "short_name": "Raksha Path",
+  "name": "SafeCampus (Raksha Path) - Campus Safety PWA",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "192x192 512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0f0e17",
+  "theme_color": "#701a75",
+  "display": "standalone",
+  "orientation": "portrait",
+  "scope": "/",
+  "description": "SafeCampus (Raksha Path): Full-loop campus safety, safe route navigator, silent SOS, and anonymous issue resolution."
+}
